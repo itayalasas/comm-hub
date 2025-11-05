@@ -6,14 +6,13 @@ Este es un proyecto standalone de formularios públicos para AuthSystem.
 
 Este proyecto está configurado para deployarse automáticamente en Netlify.
 
-## Variables de Entorno
+## Configuración
 
-Las siguientes variables están pre-configuradas en el archivo .env:
+La configuración de la aplicación está embebida en el archivo `src/lib/config.ts`:
 
-- VITE_SUPABASE_URL: URL de tu proyecto Supabase
-- VITE_SUPABASE_ANON_KEY: Anon key de Supabase
-- VITE_APP_ID: ID de la aplicación
-- VITE_API_KEY: API key de la aplicación
+- apiBaseUrl: URL de la API pública de AuthSystem
+- appId: ID de la aplicación
+- apiKey: API key de la aplicación
 
 ## Rutas
 
