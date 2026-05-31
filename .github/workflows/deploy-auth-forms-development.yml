@@ -1,0 +1,162 @@
+name: Deploy auth forms (development)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Container Apps extension
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az extension add --name containerapp --upgrade
+            echo "Azure Container Apps extension instalada."
+            echo "Nota: Microsoft.App y Microsoft.OperationalInsights deben estar registrados previamente en la suscripcion por un administrador."
+
+      - name: Ensure Azure resources
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            RG_NAME='contenedores'
+            RG_LOCATION='North Central US'
+
+            if az group show --name "$RG_NAME" >/dev/null 2>&1; then
+              echo "Resource Group $RG_NAME encontrado"
+            elif true; then
+              az group create --name "$RG_NAME" --location "$RG_LOCATION"
+            else
+              echo "::error::El Resource Group $RG_NAME no existe y la creacion automatica esta desactivada."
+              exit 1
+            fi
+
+            ACA_ENV_NAME='sendcraft-development-env'
+            if az containerapp env show --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+              echo "ACA Environment $ACA_ENV_NAME encontrado"
+            elif true; then
+              if ! ACA_ENV_CREATE_OUTPUT=$(az containerapp env create --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" --location "$RG_LOCATION" --logs-destination none 2>&1); then
+                echo "$ACA_ENV_CREATE_OUTPUT"
+                if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.App/register/action"; then
+                  echo "::error::La suscripcion todavia no tiene registrado Microsoft.App. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.App --wait y az provider register --namespace Microsoft.OperationalInsights --wait"
+                fi
+                if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.OperationalInsights/register/action"; then
+                  echo "::error::La suscripcion todavia no tiene registrado Microsoft.OperationalInsights. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.OperationalInsights --wait"
+                fi
+                if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.OperationalInsights/workspaces/write"; then
+                  echo "::error::Azure intento crear un Log Analytics Workspace, pero este flujo ahora espera crear el ACA Environment sin logs centralizados. Vuelve a generar el workflow desde AuthSystem o elimina la creacion automatica de workspace en el YAML actual."
+                fi
+                exit 1
+              fi
+              echo "$ACA_ENV_CREATE_OUTPUT"
+            else
+              echo "::error::El ACA Environment $ACA_ENV_NAME no existe y la creacion automatica esta desactivada."
+              exit 1
+            fi
+
+            echo "ACA_ENV_NAME=$ACA_ENV_NAME" >> "$GITHUB_ENV"
+
+      - name: Ensure Azure Container Registry
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            RG_NAME='contenedores'
+            RG_LOCATION='North Central US'
+            ACR_NAME='sendcraftrvxbn8acr'
+
+            if az acr show --name "$ACR_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+              echo "Azure Container Registry $ACR_NAME encontrado"
+            else
+              az acr create --name "$ACR_NAME" --resource-group "$RG_NAME" --sku Basic --admin-enabled true --location "$RG_LOCATION"
+            fi
+
+            az acr update --name "$ACR_NAME" --resource-group "$RG_NAME" --admin-enabled true >/dev/null
+
+            ACR_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RG_NAME" --query loginServer -o tsv)
+            ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --resource-group "$RG_NAME" --query username -o tsv)
+            ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --resource-group "$RG_NAME" --query "passwords[0].value" -o tsv)
+            IMAGE_REPOSITORY='auth-forms-development'
+            IMAGE_TAG='${{ github.sha }}'
+
+            echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
+            echo "ACR_SERVER=$ACR_SERVER" >> "$GITHUB_ENV"
+            echo "ACR_USERNAME=$ACR_USERNAME" >> "$GITHUB_ENV"
+            echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
+            echo "IMAGE_REPOSITORY=$IMAGE_REPOSITORY" >> "$GITHUB_ENV"
+            echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Build and push image to ACR
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            az acr build               --registry "$ACR_NAME"               --resource-group 'contenedores'               --file Dockerfile               --image "$IMAGE_REPOSITORY:$IMAGE_TAG"               .
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            IMAGE_REF="$ACR_SERVER/$IMAGE_REPOSITORY:$IMAGE_TAG"
+
+            if az containerapp show --name 'sendcraft-development' --resource-group 'contenedores' >/dev/null 2>&1; then
+              az containerapp registry set                 --name 'sendcraft-development'                 --resource-group 'contenedores'                 --server "$ACR_SERVER"                 --username "$ACR_USERNAME"                 --password "$ACR_PASSWORD"
+
+              az containerapp update                 --name 'sendcraft-development'                 --resource-group 'contenedores'                 --image "$IMAGE_REF"                 --set-env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+            else
+              az containerapp create                 --name 'sendcraft-development'                 --resource-group 'contenedores'                 --environment "$ACA_ENV_NAME"                 --image "$IMAGE_REF"                 --target-port 8080                 --ingress external                 --registry-server "$ACR_SERVER"                 --registry-username "$ACR_USERNAME"                 --registry-password "$ACR_PASSWORD"                 --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+            fi
+
+            FQDN=$(az containerapp show --name 'sendcraft-development' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
+            echo "Container App desplegada en https://$FQDN"
+
+      - name: Sync deployed URLs with AuthSystem
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            FQDN=$(az containerapp show --name 'sendcraft-development' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
+            DEPLOY_BASE_URL="https://$FQDN"
+            if [ -z "$FQDN" ]; then
+              echo "::error::No se pudo resolver el FQDN final de la Container App"
+              exit 1
+            fi
+
+            cat > sync-deployment-url.json <<EOF
+            {
+              "environment_id": "b77e0ef0-312e-4fb5-b353-da7d515ffb34",
+              "deployed_base_url": "$DEPLOY_BASE_URL",
+              "deployment_provider": "azure_container_apps",
+              "azure_container_app_name": "sendcraft-development",
+              "azure_containerapps_environment": "sendcraft-development-env"
+            }
+            EOF
+
+            echo "Sincronizando URLs del ambiente b77e0ef0-312e-4fb5-b353-da7d515ffb34 con base $DEPLOY_BASE_URL"
+
+            CALLBACK_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST 'https://sfqtmnncgiqkveaoqckt.supabase.co/functions/v1/sync-environment-deployment-url'               -H "Content-Type: application/json"               -H "x-deploy-token: ${{ secrets.AUTHSYSTEM_DEPLOY_CALLBACK_TOKEN }}"               --data-binary @sync-deployment-url.json)
+
+            CALLBACK_HTTP_CODE=$(echo "$CALLBACK_RESPONSE" | tail -n 1)
+            CALLBACK_BODY=$(echo "$CALLBACK_RESPONSE" | sed '$d')
+            echo "$CALLBACK_BODY"
+
+            if [ "$CALLBACK_HTTP_CODE" -lt 200 ] || [ "$CALLBACK_HTTP_CODE" -ge 300 ]; then
+              echo "::error::No se pudo sincronizar la URL desplegada con AuthSystem"
+              exit 1
+            fi
