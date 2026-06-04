@@ -131,6 +131,11 @@ jobs:
         with:
           inlineScript: |
             set -e
+            DEPLOY_CALLBACK_TOKEN="${{ secrets.AUTHSYSTEM_DEPLOY_CALLBACK_TOKEN_DEVELOPMENT }}"
+            if [ -z "$DEPLOY_CALLBACK_TOKEN" ]; then
+              echo "::error::No se encontro el secreto AUTHSYSTEM_DEPLOY_CALLBACK_TOKEN_DEVELOPMENT en GitHub Actions"
+              exit 1
+            fi
             FQDN=$(az containerapp show --name 'sendcraft-development' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
             DEPLOY_BASE_URL="https://$FQDN"
             if [ -z "$FQDN" ]; then
@@ -150,7 +155,7 @@ jobs:
 
             echo "Sincronizando URLs del ambiente b77e0ef0-312e-4fb5-b353-da7d515ffb34 con base $DEPLOY_BASE_URL"
 
-            CALLBACK_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST 'https://sfqtmnncgiqkveaoqckt.supabase.co/functions/v1/sync-environment-deployment-url'               -H "Content-Type: application/json"               -H "x-deploy-token: ${{ secrets.AUTHSYSTEM_DEPLOY_CALLBACK_TOKEN }}"               --data-binary @sync-deployment-url.json)
+            CALLBACK_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST 'https://sfqtmnncgiqkveaoqckt.supabase.co/functions/v1/sync-environment-deployment-url'               -H "Content-Type: application/json"               -H "x-deploy-token: $DEPLOY_CALLBACK_TOKEN"               --data-binary @sync-deployment-url.json)
 
             CALLBACK_HTTP_CODE=$(echo "$CALLBACK_RESPONSE" | tail -n 1)
             CALLBACK_BODY=$(echo "$CALLBACK_RESPONSE" | sed '$d')
