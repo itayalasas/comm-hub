@@ -78,7 +78,7 @@ jobs:
             set -e
             RG_NAME='contenedores'
             RG_LOCATION='North Central US'
-            ACR_NAME='sendcraftrvxbn8acr'
+            ACR_NAME='cronjobs1z9ksgacr'
 
             if az acr show --name "$ACR_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
               echo "Azure Container Registry $ACR_NAME encontrado"
