@@ -115,15 +115,15 @@ jobs:
             set -e
             IMAGE_REF="$ACR_SERVER/$IMAGE_REPOSITORY:$IMAGE_TAG"
 
-            if az containerapp show --name 'ca-authsystem' --resource-group 'rg-sendcraft' >/dev/null 2>&1; then
-              az containerapp registry set                 --name 'ca-authsystem'                 --resource-group 'rg-sendcraft'                 --server "$ACR_SERVER"                 --username "$ACR_USERNAME"                 --password "$ACR_PASSWORD"
+            if az containerapp show --name 'sendcraft-production' --resource-group 'rg-sendcraft' >/dev/null 2>&1; then
+              az containerapp registry set                 --name 'sendcraft-production'                 --resource-group 'rg-sendcraft'                 --server "$ACR_SERVER"                 --username "$ACR_USERNAME"                 --password "$ACR_PASSWORD"
 
-              az containerapp update                 --name 'ca-authsystem'                 --resource-group 'rg-sendcraft'                 --image "$IMAGE_REF"                 --set-env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+              az containerapp update                 --name 'sendcraft-production'                 --resource-group 'rg-sendcraft'                 --image "$IMAGE_REF"                 --set-env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
             else
-              az containerapp create                 --name 'ca-authsystem'                 --resource-group 'rg-sendcraft'                 --environment "$ACA_ENV_NAME"                 --image "$IMAGE_REF"                 --target-port 8080                 --ingress external                 --registry-server "$ACR_SERVER"                 --registry-username "$ACR_USERNAME"                 --registry-password "$ACR_PASSWORD"                 --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+              az containerapp create                 --name 'sendcraft-production'                 --resource-group 'rg-sendcraft'                 --environment "$ACA_ENV_NAME"                 --image "$IMAGE_REF"                 --target-port 8080                 --ingress external                 --registry-server "$ACR_SERVER"                 --registry-username "$ACR_USERNAME"                 --registry-password "$ACR_PASSWORD"                 --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
             fi
 
-            FQDN=$(az containerapp show --name 'ca-authsystem' --resource-group 'rg-sendcraft' --query properties.configuration.ingress.fqdn -o tsv)
+            FQDN=$(az containerapp show --name 'sendcraft-production' --resource-group 'rg-sendcraft' --query properties.configuration.ingress.fqdn -o tsv)
             echo "Container App desplegada en https://$FQDN"
 
       - name: Sync deployed URLs with AuthSystem
@@ -136,7 +136,7 @@ jobs:
               echo "::error::No se encontro el secreto AUTHSYSTEM_DEPLOY_CALLBACK_TOKEN_PRODUCTION en GitHub Actions"
               exit 1
             fi
-            FQDN=$(az containerapp show --name 'ca-authsystem' --resource-group 'rg-sendcraft' --query properties.configuration.ingress.fqdn -o tsv)
+            FQDN=$(az containerapp show --name 'sendcraft-production' --resource-group 'rg-sendcraft' --query properties.configuration.ingress.fqdn -o tsv)
             DEPLOY_BASE_URL="https://$FQDN"
             if [ -z "$FQDN" ]; then
               echo "::error::No se pudo resolver el FQDN final de la Container App"
@@ -148,7 +148,7 @@ jobs:
               "environment_id": "3430fb8b-cf25-4ec8-9ee2-794d72e02911",
               "deployed_base_url": "$DEPLOY_BASE_URL",
               "deployment_provider": "azure_container_apps",
-              "azure_container_app_name": "ca-authsystem",
+              "azure_container_app_name": "sendcraft-production",
               "azure_containerapps_environment": "env-sendcraft"
             }
             EOF
